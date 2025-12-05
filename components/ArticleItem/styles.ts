@@ -2,10 +2,12 @@ import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
   container: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
   content: {
     flex: 1,
@@ -13,11 +15,15 @@ export const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
     color: '#000',
+    marginBottom: 4,
   },
   meta: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
+  },
+  favoriteButton: {
+    padding: 8,
+    marginLeft: 8,
   },
 });

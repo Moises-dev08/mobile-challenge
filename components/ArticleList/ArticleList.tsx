@@ -5,22 +5,34 @@ import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-n
 
 import { fetchMobileArticles } from '@/api/hnApi';
 import { Article, HNResponse } from '@/types/article';
-import { getDeletedArticleIds, saveDeletedArticleIds } from '@/utils/storage';
+import {
+  getDeletedArticleIds,
+  getFavoriteArticleIds,
+  saveDeletedArticleIds,
+  saveFavoriteArticleIds,
+} from '@/utils/storage';
 import { SwipeableArticleItem } from '../ArticleItem/SwipeableArticleItem';
 import { styles } from './styles';
 
 export const ArticleList = () => {
   const [deletedArticleIds, setDeletedArticleIds] = useState<Set<string>>(new Set());
+  const [favoriteArticleIds, setFavoriteArticleIds] = useState<Set<string>>(new Set());
   const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
+  const [isLoadingFavorites, setIsLoadingFavorites] = useState(true);
 
-  // Load deleted article IDs from AsyncStorage on mount
+  // Load deleted and favorite article IDs from AsyncStorage on mount
   useEffect(() => {
-    const loadDeletedIds = async () => {
-      const ids = await getDeletedArticleIds();
-      setDeletedArticleIds(ids);
+    const loadData = async () => {
+      const [deletedIds, favoriteIds] = await Promise.all([
+        getDeletedArticleIds(),
+        getFavoriteArticleIds(),
+      ]);
+      setDeletedArticleIds(deletedIds);
+      setFavoriteArticleIds(favoriteIds);
       setIsLoadingDeleted(false);
+      setIsLoadingFavorites(false);
     };
-    loadDeletedIds();
+    loadData();
   }, []);
 
   const {
@@ -82,6 +94,28 @@ export const ArticleList = () => {
     }
   };
 
+  const handleFavorite = async (article: Article) => {
+    // Toggle favorite status
+    const newFavoriteIds = new Set(favoriteArticleIds);
+    if (newFavoriteIds.has(article.objectID)) {
+      newFavoriteIds.delete(article.objectID);
+    } else {
+      newFavoriteIds.add(article.objectID);
+    }
+    
+    // Optimistic update
+    setFavoriteArticleIds(newFavoriteIds);
+
+    // Persist to AsyncStorage
+    try {
+      await saveFavoriteArticleIds(newFavoriteIds);
+    } catch (error) {
+      console.error('Failed to save favorite article:', error);
+      // Revert on error
+      setFavoriteArticleIds(favoriteArticleIds);
+    }
+  };
+
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
@@ -98,7 +132,7 @@ export const ArticleList = () => {
     );
   };
 
-  if (isLoading || isLoadingDeleted) {
+  if (isLoading || isLoadingDeleted || isLoadingFavorites) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -123,6 +157,8 @@ export const ArticleList = () => {
           article={item}
           onPress={handlePress}
           onDelete={handleDelete}
+          onFavorite={handleFavorite}
+          isFavorited={favoriteArticleIds.has(item.objectID)}
         />
       )}
       refreshControl={
