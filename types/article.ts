@@ -6,6 +6,7 @@ export interface Article {
   url: string;
   story_title?: string;
   story_url?: string;
+  points?: number; // For score filtering
 }
 
 export interface HNResponse {
