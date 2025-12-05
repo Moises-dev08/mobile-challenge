@@ -1,4 +1,5 @@
 import { Article } from '@/types/article';
+import { Ionicons } from '@expo/vector-icons';
 import { fireEvent, render } from '@testing-library/react-native';
 import React from 'react';
 import { ArticleItem } from '../ArticleItem';
@@ -13,6 +14,7 @@ describe('ArticleItem', () => {
   };
 
   const mockOnPress = jest.fn();
+  const mockOnFavorite = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -65,5 +67,59 @@ describe('ArticleItem', () => {
 
     // Should contain "ago" from formatDistanceToNow
     expect(getByText(/ago/)).toBeTruthy();
+  });
+
+  describe('favorite functionality', () => {
+    it('should not render favorite button when onFavorite is not provided', () => {
+      const { UNSAFE_queryByType } = render(
+        <ArticleItem article={mockArticle} onPress={mockOnPress} />
+      );
+
+      const favoriteButtons = UNSAFE_queryByType(Ionicons);
+      expect(favoriteButtons).toBeNull();
+    });
+
+    it('should render favorite button when onFavorite is provided', () => {
+      const { UNSAFE_getByType } = render(
+        <ArticleItem 
+          article={mockArticle} 
+          onPress={mockOnPress}
+          onFavorite={mockOnFavorite}
+          isFavorited={false}
+        />
+      );
+
+      expect(UNSAFE_getByType(Ionicons)).toBeTruthy();
+    });
+
+    it('should show outlined heart when not favorited', () => {
+      const { UNSAFE_getByType } = render(
+        <ArticleItem 
+          article={mockArticle} 
+          onPress={mockOnPress}
+          onFavorite={mockOnFavorite}
+          isFavorited={false}
+        />
+      );
+
+      const icon = UNSAFE_getByType(Ionicons);
+      expect(icon.props.name).toBe('heart-outline');
+      expect(icon.props.color).toBe('#666');
+    });
+
+    it('should show filled heart when favorited', () => {
+      const { UNSAFE_getByType } = render(
+        <ArticleItem 
+          article={mockArticle} 
+          onPress={mockOnPress}
+          onFavorite={mockOnFavorite}
+          isFavorited={true}
+        />
+      );
+
+      const icon = UNSAFE_getByType(Ionicons);
+      expect(icon.props.name).toBe('heart');
+      expect(icon.props.color).toBe('#FF3B30');
+    });
   });
 });

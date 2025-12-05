@@ -1,12 +1,13 @@
-import { ArticleList } from '@/components/ArticleList/ArticleList';
-import { View } from 'react-native';
 
-import { styles } from './_styles';
+import { ArticleList } from '@/components/ArticleList/ArticleList';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 export default function HomeScreen() {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ArticleList />
-    </View>
+    </SafeAreaView>
   );
 }
+

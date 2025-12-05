@@ -10,12 +10,16 @@ interface SwipeableArticleItemProps {
   article: Article;
   onPress: (article: Article) => void;
   onDelete: (article: Article) => void;
+  onFavorite?: (article: Article) => void;
+  isFavorited?: boolean;
 }
 
 export const SwipeableArticleItem: React.FC<SwipeableArticleItemProps> = ({
   article,
   onPress,
   onDelete,
+  onFavorite,
+  isFavorited,
 }) => {
   const swipeableRef = useRef<Swipeable>(null);
 
@@ -52,7 +56,12 @@ export const SwipeableArticleItem: React.FC<SwipeableArticleItemProps> = ({
       renderRightActions={renderRightActions}
       overshootRight={false}
       friction={2}>
-      <ArticleItem article={article} onPress={onPress} />
+      <ArticleItem 
+        article={article} 
+        onPress={onPress} 
+        onFavorite={onFavorite}
+        isFavorited={isFavorited}
+      />
     </Swipeable>
   );
 };
