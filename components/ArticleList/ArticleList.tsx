@@ -1,13 +1,16 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import React, { useMemo } from 'react';
+import { router } from 'expo-router';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { fetchMobileArticles } from '@/api/hnApi';
 import { Article, HNResponse } from '@/types/article';
-import { ArticleItem } from '../ArticleItem/ArticleItem';
+import { SwipeableArticleItem } from '../ArticleItem/SwipeableArticleItem';
 import { styles } from './styles';
 
 export const ArticleList = () => {
+  const [deletedArticleIds, setDeletedArticleIds] = useState<Set<string>>(new Set());
+
   const {
     data,
     isLoading,
@@ -30,18 +33,30 @@ export const ArticleList = () => {
     initialPageParam: 0,
   });
 
-  // Flatten all pages into a single array of articles
+  // Flatten all pages into a single array of articles and filter out deleted ones
   const articles = useMemo(() => {
-    return data?.pages.flatMap((page) => page.hits) ?? [];
-  }, [data]);
+    const allArticles = data?.pages.flatMap((page) => page.hits) ?? [];
+    return allArticles.filter((article) => !deletedArticleIds.has(article.objectID));
+  }, [data, deletedArticleIds]);
 
   const onRefresh = async () => {
     await refetch();
   };
 
   const handlePress = (article: Article) => {
-    // Navigate to article detail
-    console.log('Pressed article:', article.objectID);
+    const url = article.story_url || article.url;
+    const title = article.story_title || article.title;
+    
+    if (url) {
+      router.push({
+        pathname: '/article-webview',
+        params: { url, title },
+      });
+    }
+  };
+
+  const handleDelete = (article: Article) => {
+    setDeletedArticleIds((prev) => new Set(prev).add(article.objectID));
   };
 
   const handleLoadMore = () => {
@@ -80,7 +95,13 @@ export const ArticleList = () => {
     <FlatList
       data={articles}
       keyExtractor={(item) => item.objectID.toString()}
-      renderItem={({ item }) => <ArticleItem article={item} onPress={handlePress} />}
+      renderItem={({ item }) => (
+        <SwipeableArticleItem
+          article={item}
+          onPress={handlePress}
+          onDelete={handleDelete}
+        />
+      )}
       refreshControl={
         <RefreshControl 
           refreshing={isRefetching} 

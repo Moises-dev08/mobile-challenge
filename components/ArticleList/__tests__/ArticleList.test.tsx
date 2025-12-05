@@ -1,10 +1,36 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import { ArticleList } from '../ArticleList';
 
 jest.mock('@tanstack/react-query');
 const mockedUseInfiniteQuery = useInfiniteQuery as jest.MockedFunction<typeof useInfiniteQuery>;
+
+// Mock expo-router
+jest.mock('expo-router', () => ({
+  router: {
+    push: jest.fn(),
+  },
+}));
+
+// Mock SwipeableArticleItem to simplify testing
+jest.mock('../../ArticleItem/SwipeableArticleItem', () => ({
+  SwipeableArticleItem: ({ article, onPress, onDelete }: any) => {
+    const { View, Text, Pressable } = require('react-native');
+    return (
+      <View>
+        <Pressable onPress={() => onPress(article)}>
+          <Text>{article.title}</Text>
+        </Pressable>
+        <Pressable testID={`delete-${article.objectID}`} onPress={() => onDelete(article)}>
+          <Text>Delete</Text>
+        </Pressable>
+      </View>
+    );
+  },
+}));
+
+import { router } from 'expo-router';
 
 describe('ArticleList', () => {
   const mockArticles = [
@@ -59,7 +85,7 @@ describe('ArticleList', () => {
       data: undefined,
     } as any);
 
-    const { getByTestId, UNSAFE_queryByType } = render(<ArticleList />);
+    const { UNSAFE_queryByType } = render(<ArticleList />);
     
     // Look for ActivityIndicator
     const activityIndicators = UNSAFE_queryByType('ActivityIndicator' as any);
@@ -73,6 +99,45 @@ describe('ArticleList', () => {
 
     await waitFor(() => {
       expect(getByText('Article 1')).toBeTruthy();
+      expect(getByText('Article 2')).toBeTruthy();
+    });
+  });
+
+  it('should navigate to WebView when article is pressed', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(mockQueryResult as any);
+
+    const { getByText } = render(<ArticleList />);
+
+    await waitFor(() => {
+      expect(getByText('Article 1')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Article 1'));
+
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/article-webview',
+      params: {
+        url: 'https://example.com/1',
+        title: 'Article 1',
+      },
+    });
+  });
+
+  it('should remove article when delete is called', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(mockQueryResult as any);
+
+    const { getByText, getByTestId, queryByText } = render(<ArticleList />);
+
+    await waitFor(() => {
+      expect(getByText('Article 1')).toBeTruthy();
+    });
+
+    // Delete first article
+    fireEvent.press(getByTestId('delete-1'));
+
+    // Article 1 should be removed, Article 2 should still be there
+    await waitFor(() => {
+      expect(queryByText('Article 1')).toBeNull();
       expect(getByText('Article 2')).toBeTruthy();
     });
   });
