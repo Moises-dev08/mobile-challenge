@@ -1,5 +1,7 @@
+import { getDeletedArticleIds, saveDeletedArticleIds } from '@/utils/storage';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import React from 'react';
 import { ArticleList } from '../ArticleList';
 
@@ -11,6 +13,13 @@ jest.mock('expo-router', () => ({
   router: {
     push: jest.fn(),
   },
+}));
+
+// Mock storage utilities
+jest.mock('@/utils/storage', () => ({
+  getDeletedArticleIds: jest.fn(),
+  saveDeletedArticleIds: jest.fn(),
+  clearDeletedArticleIds: jest.fn(),
 }));
 
 // Mock SwipeableArticleItem to simplify testing
@@ -29,8 +38,6 @@ jest.mock('../../ArticleItem/SwipeableArticleItem', () => ({
     );
   },
 }));
-
-import { router } from 'expo-router';
 
 describe('ArticleList', () => {
   const mockArticles = [
@@ -76,6 +83,9 @@ describe('ArticleList', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Mock storage to return empty set by default
+    (getDeletedArticleIds as jest.Mock).mockResolvedValue(new Set());
+    (saveDeletedArticleIds as jest.Mock).mockResolvedValue(undefined);
   });
 
   it('should show loading indicator when loading', () => {
@@ -142,7 +152,43 @@ describe('ArticleList', () => {
     });
   });
 
-  it('should show error message when there is an error', () => {
+  it('should persist deleted articles to AsyncStorage', async () => {
+    mockedUseInfiniteQuery.mockReturnValue(mockQueryResult as any);
+
+    const { getByText, getByTestId } = render(<ArticleList />);
+
+    await waitFor(() => {
+      expect(getByText('Article 1')).toBeTruthy();
+    });
+
+    // Delete first article
+    fireEvent.press(getByTestId('delete-1'));
+
+    await waitFor(() => {
+      expect(saveDeletedArticleIds).toHaveBeenCalledWith(new Set(['1']));
+    });
+  });
+
+  it('should load previously deleted articles from storage', async () => {
+    // Mock storage returning a previously deleted article
+    (getDeletedArticleIds as jest.Mock).mockResolvedValue(new Set(['1']));
+    mockedUseInfiniteQuery.mockReturnValue(mockQueryResult as any);
+
+    const { queryByText, getByText } = render(<ArticleList />);
+
+    // Wait for storage to load
+    await waitFor(() => {
+      expect(getDeletedArticleIds).toHaveBeenCalled();
+    });
+
+    // Article 1 should not appear (was deleted)
+    await waitFor(() => {
+      expect(queryByText('Article 1')).toBeNull();
+      expect(getByText('Article 2')).toBeTruthy();
+    });
+  });
+
+  it('should show error message when there is an error', async () => {
     mockedUseInfiniteQuery.mockReturnValue({
       ...mockQueryResult,
       isError: true,
@@ -151,7 +197,10 @@ describe('ArticleList', () => {
 
     const { getByText } = render(<ArticleList />);
 
-    expect(getByText('Error fetching articles')).toBeTruthy();
+    // Wait for deleted IDs to load
+    await waitFor(() => {
+      expect(getByText('Error fetching articles')).toBeTruthy();
+    });
   });
 
   it('should display multiple pages of articles', async () => {
