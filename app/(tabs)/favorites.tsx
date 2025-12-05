@@ -1,27 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchMobileArticles } from '@/api/hnApi';
 import { SwipeableArticleItem } from '@/components/ArticleItem/SwipeableArticleItem';
+import { useArticleStore } from '@/stores/articleStore';
 import { Article } from '@/types/article';
-import { getFavoriteArticleIds, saveFavoriteArticleIds } from '@/utils/storage';
 
 export default function FavoritesScreen() {
-  const [favoriteArticleIds, setFavoriteArticleIds] = useState<Set<string>>(new Set());
-  const [isLoadingFavorites, setIsLoadingFavorites] = useState(true);
-
-  // Load favorite IDs from storage
-  useEffect(() => {
-    const loadFavorites = async () => {
-      const ids = await getFavoriteArticleIds();
-      setFavoriteArticleIds(ids);
-      setIsLoadingFavorites(false);
-    };
-    loadFavorites();
-  }, []);
+  const { favoriteIds, isHydrated, toggleFavorite, isFavorited } = useArticleStore();
 
   const { data, isLoading, isError, refetch, isRefetching } = useInfiniteQuery({
     queryKey: ['articles'],
@@ -36,10 +26,10 @@ export default function FavoritesScreen() {
   });
 
   // Filter only favorited articles
-  const favoriteArticles = React.useMemo(() => {
+  const favoriteArticles = useMemo(() => {
     const allArticles = data?.pages.flatMap((page) => page.hits) ?? [];
-    return allArticles.filter((article) => favoriteArticleIds.has(article.objectID));
-  }, [data, favoriteArticleIds]);
+    return allArticles.filter((article) => favoriteIds.has(article.objectID));
+  }, [data, favoriteIds]);
 
   const handlePress = (article: Article) => {
     const url = article.story_url || article.url;
@@ -53,78 +43,79 @@ export default function FavoritesScreen() {
     }
   };
 
-  const handleUnfavorite = async (article: Article) => {
-    const newFavoriteIds = new Set(favoriteArticleIds);
-    newFavoriteIds.delete(article.objectID);
-    
-    setFavoriteArticleIds(newFavoriteIds);
-
-    try {
-      await saveFavoriteArticleIds(newFavoriteIds);
-    } catch (error) {
-      console.error('Failed to save favorites:', error);
-      // Revert on error
-      setFavoriteArticleIds(favoriteArticleIds);
-    }
+  const handleUnfavorite = (article: Article) => {
+    toggleFavorite(article.objectID);
   };
 
   const onRefresh = async () => {
     await refetch();
   };
 
-  if (isLoading || isLoadingFavorites) {
+  if (isLoading || !isHydrated) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (isError) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error loading articles</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Error loading articles</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (favoriteArticles.length === 0) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="heart-outline" size={64} color="#ccc" />
-        <Text style={styles.emptyText}>No favorite articles yet</Text>
-        <Text style={styles.emptySubtext}>Tap the heart icon to save your favorites</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <Ionicons name="heart-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>No favorite articles yet</Text>
+          <Text style={styles.emptySubtext}>Tap the heart icon to save your favorites</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <FlatList
-      data={favoriteArticles}
-      keyExtractor={(item) => item.objectID.toString()}
-      renderItem={({ item }) => (
-        <SwipeableArticleItem
-          article={item}
-          onPress={handlePress}
-          onDelete={handleUnfavorite}
-          onFavorite={handleUnfavorite}
-          isFavorited={true}
-        />
-      )}
-      refreshControl={
-        <RefreshControl 
-          refreshing={isRefetching} 
-          onRefresh={onRefresh}
-          tintColor="#007AFF"
-          colors={['#007AFF']}
-        />
-      }
-      contentContainerStyle={favoriteArticles.length === 0 ? styles.center : styles.list}
-    />
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        data={favoriteArticles}
+        keyExtractor={(item, index) => `${item.objectID}-${index}`}
+        renderItem={({ item }) => (
+          <SwipeableArticleItem
+            article={item}
+            onPress={handlePress}
+            onDelete={handleUnfavorite}
+            onFavorite={handleUnfavorite}
+            isFavorited={true}
+          />
+        )}
+        refreshControl={
+          <RefreshControl 
+            refreshing={isRefetching} 
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+          />
+        }
+        contentContainerStyle={favoriteArticles.length === 0 ? styles.center : styles.list}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   center: {
     flex: 1,
     justifyContent: 'center',

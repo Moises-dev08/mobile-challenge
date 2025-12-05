@@ -1,27 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchMobileArticles } from '@/api/hnApi';
 import { ArticleItem } from '@/components/ArticleItem/ArticleItem';
+import { useArticleStore } from '@/stores/articleStore';
 import { Article } from '@/types/article';
-import { getDeletedArticleIds, saveDeletedArticleIds } from '@/utils/storage';
 
 export default function DeletedScreen() {
-  const [deletedArticleIds, setDeletedArticleIds] = useState<Set<string>>(new Set());
-  const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
-
-  // Load deleted IDs from storage
-  useEffect(() => {
-    const loadDeleted = async () => {
-      const ids = await getDeletedArticleIds();
-      setDeletedArticleIds(ids);
-      setIsLoadingDeleted(false);
-    };
-    loadDeleted();
-  }, []);
+  const { deletedIds, isHydrated, restoreArticle } = useArticleStore();
 
   const { data, isLoading, isError, refetch, isRefetching } = useInfiniteQuery({
     queryKey: ['articles'],
@@ -36,10 +26,10 @@ export default function DeletedScreen() {
   });
 
   // Filter only deleted articles
-  const deletedArticles = React.useMemo(() => {
+  const deletedArticles = useMemo(() => {
     const allArticles = data?.pages.flatMap((page) => page.hits) ?? [];
-    return allArticles.filter((article) => deletedArticleIds.has(article.objectID));
-  }, [data, deletedArticleIds]);
+    return allArticles.filter((article) => deletedIds.has(article.objectID));
+  }, [data, deletedIds]);
 
   const handlePress = (article: Article) => {
     const url = article.story_url || article.url;
@@ -53,80 +43,82 @@ export default function DeletedScreen() {
     }
   };
 
-  const handleRestore = async (article: Article) => {
-    const newDeletedIds = new Set(deletedArticleIds);
-    newDeletedIds.delete(article.objectID);
-    
-    setDeletedArticleIds(newDeletedIds);
-
-    try {
-      await saveDeletedArticleIds(newDeletedIds);
-    } catch (error) {
-      console.error('Failed to restore article:', error);
-      // Revert on error
-      setDeletedArticleIds(deletedArticleIds);
-    }
+  const handleRestore = (article: Article) => {
+    restoreArticle(article.objectID);
   };
 
   const onRefresh = async () => {
     await refetch();
   };
 
-  if (isLoading || isLoadingDeleted) {
+  if (isLoading || !isHydrated) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (isError) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error loading articles</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Error loading articles</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (deletedArticles.length === 0) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="trash-outline" size={64} color="#ccc" />
-        <Text style={styles.emptyText}>No deleted articles</Text>
-        <Text style={styles.emptySubtext}>Swipe left to delete articles</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <Ionicons name="trash-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>No deleted articles</Text>
+          <Text style={styles.emptySubtext}>Swipe left to delete articles</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <FlatList
-      data={deletedArticles}
-      keyExtractor={(item) => item.objectID.toString()}
-      renderItem={({ item }) => (
-        <View style={styles.itemContainer}>
-          <ArticleItem article={item} onPress={handlePress} />
-          <Pressable 
-            style={styles.restoreButton}
-            onPress={() => handleRestore(item)}>
-            <Ionicons name="arrow-undo-outline" size={20} color="#007AFF" />
-            <Text style={styles.restoreText}>Restore</Text>
-          </Pressable>
-        </View>
-      )}
-      refreshControl={
-        <RefreshControl 
-          refreshing={isRefetching} 
-          onRefresh={onRefresh}
-          tintColor="#007AFF"
-          colors={['#007AFF']}
-        />
-      }
-      contentContainerStyle={deletedArticles.length === 0 ? styles.center : styles.list}
-    />
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        data={deletedArticles}
+        keyExtractor={(item, index) => `${item.objectID}-${index}`}
+        renderItem={({ item }) => (
+          <View style={styles.itemContainer}>
+            <View style={styles.articleWrapper}>
+              <ArticleItem article={item} onPress={handlePress} />
+            </View>
+            <Pressable 
+              style={styles.restoreButton}
+              onPress={() => handleRestore(item)}>
+              <Ionicons name="arrow-undo-outline" size={24} color="#007AFF" />
+            </Pressable>
+          </View>
+        )}
+        refreshControl={
+          <RefreshControl 
+            refreshing={isRefetching} 
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+          />
+        }
+        contentContainerStyle={deletedArticles.length === 0 ? styles.center : styles.list}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   center: {
     flex: 1,
     justifyContent: 'center',
@@ -143,11 +135,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
+  articleWrapper: {
+    flex: 1,
+  },
   restoreButton: {
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginRight: 8,
   },
   restoreText: {
     marginLeft: 4,

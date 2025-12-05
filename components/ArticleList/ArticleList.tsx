@@ -1,39 +1,22 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { fetchMobileArticles } from '@/api/hnApi';
+import { useArticleStore } from '@/stores/articleStore';
 import { Article, HNResponse } from '@/types/article';
-import {
-  getDeletedArticleIds,
-  getFavoriteArticleIds,
-  saveDeletedArticleIds,
-  saveFavoriteArticleIds,
-} from '@/utils/storage';
 import { SwipeableArticleItem } from '../ArticleItem/SwipeableArticleItem';
 import { styles } from './styles';
 
 export const ArticleList = () => {
-  const [deletedArticleIds, setDeletedArticleIds] = useState<Set<string>>(new Set());
-  const [favoriteArticleIds, setFavoriteArticleIds] = useState<Set<string>>(new Set());
-  const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
-  const [isLoadingFavorites, setIsLoadingFavorites] = useState(true);
-
-  // Load deleted and favorite article IDs from AsyncStorage on mount
-  useEffect(() => {
-    const loadData = async () => {
-      const [deletedIds, favoriteIds] = await Promise.all([
-        getDeletedArticleIds(),
-        getFavoriteArticleIds(),
-      ]);
-      setDeletedArticleIds(deletedIds);
-      setFavoriteArticleIds(favoriteIds);
-      setIsLoadingDeleted(false);
-      setIsLoadingFavorites(false);
-    };
-    loadData();
-  }, []);
+  // Subscribe to specific state slices for proper re-rendering
+  const deletedIds = useArticleStore((state) => state.deletedIds);
+  const favoriteIds = useArticleStore((state) => state.favoriteIds);
+  const isHydrated = useArticleStore((state) => state.isHydrated);
+  const deleteArticle = useArticleStore((state) => state.deleteArticle);
+  const toggleFavorite = useArticleStore((state) => state.toggleFavorite);
+  const isFavorited = useArticleStore((state) => state.isFavorited);
 
   const {
     data,
@@ -60,12 +43,8 @@ export const ArticleList = () => {
   // Flatten all pages into a single array of articles and filter out deleted ones
   const articles = useMemo(() => {
     const allArticles = data?.pages.flatMap((page) => page.hits) ?? [];
-    return allArticles.filter((article) => !deletedArticleIds.has(article.objectID));
-  }, [data, deletedArticleIds]);
-
-  const onRefresh = async () => {
-    await refetch();
-  };
+    return allArticles.filter((article) => !deletedIds.has(article.objectID));
+  }, [data, deletedIds]);
 
   const handlePress = (article: Article) => {
     const url = article.story_url || article.url;
@@ -79,41 +58,12 @@ export const ArticleList = () => {
     }
   };
 
-  const handleDelete = async (article: Article) => {
-    // Optimistic update: immediately update UI
-    const newDeletedIds = new Set(deletedArticleIds).add(article.objectID);
-    setDeletedArticleIds(newDeletedIds);
-
-    // Persist to AsyncStorage in background
-    try {
-      await saveDeletedArticleIds(newDeletedIds);
-    } catch (error) {
-      console.error('Failed to save deleted article:', error);
-      // Revert optimistic update on error
-      setDeletedArticleIds(deletedArticleIds);
-    }
+  const handleDelete = (article: Article) => {
+    deleteArticle(article.objectID);
   };
 
-  const handleFavorite = async (article: Article) => {
-    // Toggle favorite status
-    const newFavoriteIds = new Set(favoriteArticleIds);
-    if (newFavoriteIds.has(article.objectID)) {
-      newFavoriteIds.delete(article.objectID);
-    } else {
-      newFavoriteIds.add(article.objectID);
-    }
-    
-    // Optimistic update
-    setFavoriteArticleIds(newFavoriteIds);
-
-    // Persist to AsyncStorage
-    try {
-      await saveFavoriteArticleIds(newFavoriteIds);
-    } catch (error) {
-      console.error('Failed to save favorite article:', error);
-      // Revert on error
-      setFavoriteArticleIds(favoriteArticleIds);
-    }
+  const handleFavorite = (article: Article) => {
+    toggleFavorite(article.objectID);
   };
 
   const handleLoadMore = () => {
@@ -132,7 +82,7 @@ export const ArticleList = () => {
     );
   };
 
-  if (isLoading || isLoadingDeleted || isLoadingFavorites) {
+  if (isLoading || !isHydrated) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -148,17 +98,21 @@ export const ArticleList = () => {
     );
   }
 
+  const onRefresh = async () => {
+    await refetch();
+  };
+
   return (
     <FlatList
       data={articles}
-      keyExtractor={(item) => item.objectID.toString()}
+      keyExtractor={(item, index) => `${item.objectID}-${index}`}
       renderItem={({ item }) => (
         <SwipeableArticleItem
           article={item}
           onPress={handlePress}
           onDelete={handleDelete}
           onFavorite={handleFavorite}
-          isFavorited={favoriteArticleIds.has(item.objectID)}
+          isFavorited={favoriteIds.has(item.objectID)}
         />
       )}
       refreshControl={
