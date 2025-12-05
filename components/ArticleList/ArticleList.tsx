@@ -1,15 +1,27 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { fetchMobileArticles } from '@/api/hnApi';
 import { Article, HNResponse } from '@/types/article';
+import { getDeletedArticleIds, saveDeletedArticleIds } from '@/utils/storage';
 import { SwipeableArticleItem } from '../ArticleItem/SwipeableArticleItem';
 import { styles } from './styles';
 
 export const ArticleList = () => {
   const [deletedArticleIds, setDeletedArticleIds] = useState<Set<string>>(new Set());
+  const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
+
+  // Load deleted article IDs from AsyncStorage on mount
+  useEffect(() => {
+    const loadDeletedIds = async () => {
+      const ids = await getDeletedArticleIds();
+      setDeletedArticleIds(ids);
+      setIsLoadingDeleted(false);
+    };
+    loadDeletedIds();
+  }, []);
 
   const {
     data,
@@ -55,8 +67,19 @@ export const ArticleList = () => {
     }
   };
 
-  const handleDelete = (article: Article) => {
-    setDeletedArticleIds((prev) => new Set(prev).add(article.objectID));
+  const handleDelete = async (article: Article) => {
+    // Optimistic update: immediately update UI
+    const newDeletedIds = new Set(deletedArticleIds).add(article.objectID);
+    setDeletedArticleIds(newDeletedIds);
+
+    // Persist to AsyncStorage in background
+    try {
+      await saveDeletedArticleIds(newDeletedIds);
+    } catch (error) {
+      console.error('Failed to save deleted article:', error);
+      // Revert optimistic update on error
+      setDeletedArticleIds(deletedArticleIds);
+    }
   };
 
   const handleLoadMore = () => {
@@ -75,7 +98,7 @@ export const ArticleList = () => {
     );
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingDeleted) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
